@@ -1,4 +1,4 @@
-import { put, list, del, getDownloadUrl } from '@vercel/blob';
+import { put, list, del, get } from '@vercel/blob';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 function blobKey(syncKey: string): string {
@@ -22,19 +22,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     if (req.method === 'GET') {
-      const { blobs } = await list({ prefix: blobKey(syncKey) });
-      if (blobs.length === 0) {
+      const blob = await get(blobKey(syncKey));
+      if (!blob) {
         return res.json({ profiles: [], version: 1 });
       }
-      const downloadUrl = await getDownloadUrl(blobs[0].url);
-      const response = await fetch(downloadUrl);
-      const data = await response.json();
-      return res.json(data);
+      const text = await blob.text();
+      return res.status(200).send(text);
     }
 
     if (req.method === 'PUT') {
       const body = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
-      // Validate JSON
       JSON.parse(body);
 
       // Delete old blob if exists
@@ -54,6 +51,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(405).json({ error: 'Method not allowed' });
   } catch (e: unknown) {
+    if (e instanceof Error && e.message.includes('not found')) {
+      return res.json({ profiles: [], version: 1 });
+    }
     const message = e instanceof Error ? e.message : 'Unknown error';
     return res.status(500).json({ error: message });
   }
