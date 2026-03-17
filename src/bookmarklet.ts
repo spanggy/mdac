@@ -13,26 +13,20 @@ export function generateBookmarkletCode(): string {
     if(!payload._mdac_autofill){alert('数据格式不正确，请先在 MDAC 助手中复制人员信息');return;}
     var d=payload.data;
 
-    function setInput(id,val){
+    function setVal(id,val){
       if(!val)return;
       var el=document.getElementById(id);
       if(!el)return;
-      el.value=val;
-      el.dispatchEvent(new Event('input',{bubbles:true}));
-      el.dispatchEvent(new Event('change',{bubbles:true}));
-    }
-
-    function setSelect(id,val){
-      if(!val)return;
-      var el=document.getElementById(id);
-      if(!el)return;
-      for(var i=0;i<el.options.length;i++){
-        if(el.options[i].value===val){
-          el.selectedIndex=i;
-          break;
+      if(el.tagName==='SELECT'){
+        for(var i=0;i<el.options.length;i++){
+          if(el.options[i].value===val){
+            el.selectedIndex=i;
+            break;
+          }
         }
+      }else{
+        el.value=val;
       }
-      $(el).trigger('change');
     }
 
     function setDate(id,val){
@@ -44,62 +38,55 @@ export function generateBookmarkletCode(): string {
       var el=document.getElementById(id);
       if(!el)return;
       try{$(el).datepicker('setDate',val);}catch(e){}
-      if(!el.value){
-        el.value=val;
-      }
-      $(el).trigger('change');
+      if(!el.value){el.value=val;}
     }
 
-    // Gender mapping: Male->1, Female->2
+    // Mappings
     var genderMap={'Male':'1','Female':'2'};
-    // Travel mode mapping: Air->1, Land->2, Sea->3
     var trvlMap={'Air':'1','Land':'2','Sea':'3'};
-    // Accommodation type mapping
     var accomMap={'Hotel':'01','Residence':'02','Others':'99'};
-    // State mapping
     var stateMap={'Johor':'01','Kedah':'02','Kelantan':'03','Melaka':'04','Negeri Sembilan':'05','Pahang':'06','Pulau Pinang':'07','Perak':'08','Perlis':'09','Selangor':'10','Terengganu':'11','Sabah':'12','Sarawak':'13','Kuala Lumpur':'14','Labuan':'15','Putrajaya':'16'};
+    var phoneCode=d.phoneCountryCode?d.phoneCountryCode.replace('+',''):'86';
 
-    // Text fields
-    setInput('name',d.fullName);
-    setInput('passNo',d.passportNumber);
-    setInput('email',d.email);
-    setInput('confirmEmail',d.email);
-    setInput('mobile',d.phoneNumber);
-    setInput('vesselNm',d.flightNumber);
-    setInput('accommodationAddress1',d.accommodationAddress);
-    setInput('accommodationAddress2',d.accommodationAddress2||'');
-    setInput('accommodationPostcode',d.accommodationPostcode);
+    // Fill all fields directly, no change events
+    setVal('nationality',d.nationality);
+    setVal('pob',d.placeOfBirth);
+    setVal('region',phoneCode);
+    setVal('name',d.fullName);
+    setVal('passNo',d.passportNumber);
+    setVal('email',d.email);
+    setVal('confirmEmail',d.email);
+    setVal('mobile',d.phoneNumber);
+    setVal('vesselNm',d.flightNumber);
+    setVal('accommodationAddress1',d.accommodationAddress);
+    setVal('accommodationAddress2',d.accommodationAddress2||'');
+    setVal('accommodationPostcode',d.accommodationPostcode);
+    setVal('sex',genderMap[d.gender]||'1');
+    setVal('trvlMode',trvlMap[d.travelMode]||'1');
+    setVal('embark',d.countryOfEmbarkation);
+    setVal('accommodationStay',accomMap[d.accommodationType]||'01');
+    setVal('accommodationState',stateMap[d.accommodationState]||'');
 
-    // Select fields
-    setSelect('nationality',d.nationality);
-    setSelect('pob',d.placeOfBirth);
-    setSelect('sex',genderMap[d.gender]||'1');
-    setSelect('region',d.phoneCountryCode?d.phoneCountryCode.replace('+',''):'86');
-    setSelect('trvlMode',trvlMap[d.travelMode]||'1');
-    setSelect('embark',d.countryOfEmbarkation);
-    setSelect('accommodationStay',accomMap[d.accommodationType]||'01');
-    setSelect('accommodationState',stateMap[d.accommodationState]||'');
-
-    // Date fields (YYYY-MM-DD -> DD/MM/YYYY via datepicker)
+    // Date fields
     setDate('dob',d.dateOfBirth);
     setDate('passExpDte',d.passportExpiryDate);
     setDate('arrDt',d.arrivalDate);
     setDate('depDt',d.departureDate);
 
-    // Wait for city dropdown to populate after state selection
+    // City needs state to load first, trigger state change then wait
     if(d.accommodationCity){
-      setTimeout(function(){
-        var cityEl=document.getElementById('accommodationCity');
-        if(cityEl){
-          for(var i=0;i<cityEl.options.length;i++){
-            if(cityEl.options[i].text.toUpperCase().indexOf(d.accommodationCity.toUpperCase())>=0){
-              cityEl.selectedIndex=i;
-              $(cityEl).trigger('change');
-              break;
-            }
+      var stateEl=document.getElementById('accommodationState');
+      if(stateEl){$(stateEl).trigger('change');}
+      await new Promise(function(r){setTimeout(r,1500);});
+      var cityEl=document.getElementById('accommodationCity');
+      if(cityEl){
+        for(var i=0;i<cityEl.options.length;i++){
+          if(cityEl.options[i].text.toUpperCase().indexOf(d.accommodationCity.toUpperCase())>=0){
+            cityEl.selectedIndex=i;
+            break;
           }
         }
-      },1500);
+      }
     }
 
     alert('表单已自动填写！请检查所有字段后再提交。');

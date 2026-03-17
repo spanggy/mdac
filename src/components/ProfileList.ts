@@ -1,8 +1,9 @@
 import { TravelerProfile } from '../types';
-import { getProfiles, deleteProfile, saveProfile, exportAllData, importAllData } from '../storage';
+import { getProfiles, deleteProfile, saveProfile, exportAllData, importAllData, replaceState } from '../storage';
 import { renderProfileCard } from './ProfileCard';
 import { copyProfileToClipboard } from '../utils/clipboard';
 import { createEmptyProfile } from '../types';
+import { getSyncKey, setSyncKey, clearSyncKey, cloudLoad } from '../sync';
 
 export function renderProfileList(
   container: HTMLElement,
@@ -20,6 +21,9 @@ export function renderProfileList(
           <p class="text-sm text-gray-500 mt-1">管理人员信息，一键填写马来西亚入境卡</p>
         </div>
         <div class="flex gap-2">
+          <a href="https://imigresen-online.imi.gov.my/mdac/main?registerMain" target="_blank" rel="noopener" class="px-3 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 inline-flex items-center gap-1">
+            MDAC 官网 ↗
+          </a>
           <button id="btn-setup" class="px-3 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50">
             使用说明
           </button>
@@ -38,6 +42,22 @@ export function renderProfileList(
           导入数据
           <input type="file" accept=".json" class="hidden" id="import-file" />
         </label>
+      </div>
+
+      <!-- Sync -->
+      <div class="mb-6 p-3 bg-white border border-gray-200 rounded-lg">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="text-sm text-gray-600 font-medium">云同步:</span>
+          ${getSyncKey()
+            ? `<span class="text-sm text-green-600">已连接</span>
+               <span class="text-xs text-gray-400">(${getSyncKey()})</span>
+               <button id="btn-sync-pull" class="px-2 py-1 text-xs font-medium text-blue-600 bg-blue-50 rounded hover:bg-blue-100">从云端拉取</button>
+               <button id="btn-sync-disconnect" class="px-2 py-1 text-xs font-medium text-red-600 bg-red-50 rounded hover:bg-red-100">断开</button>
+               <span id="sync-status" class="text-xs text-gray-400"></span>`
+            : `<input id="sync-key-input" type="text" placeholder="输入同步密钥(至少4位)" class="px-2 py-1 text-sm border border-gray-300 rounded w-40" />
+               <button id="btn-sync-connect" class="px-2 py-1 text-xs font-medium text-white bg-green-600 rounded hover:bg-green-700">连接</button>`
+          }
+        </div>
       </div>
 
       <!-- Profile Grid -->
@@ -109,6 +129,65 @@ export function renderProfileList(
     a.click();
     URL.revokeObjectURL(url);
   });
+
+  // Sync event listeners
+  const syncConnectBtn = container.querySelector('#btn-sync-connect');
+  if (syncConnectBtn) {
+    syncConnectBtn.addEventListener('click', async () => {
+      const input = container.querySelector('#sync-key-input') as HTMLInputElement;
+      const key = input?.value.trim();
+      if (!key || key.length < 4) {
+        showToast(container, '同步密钥至少4位');
+        return;
+      }
+      setSyncKey(key);
+      // Try to load from cloud
+      const cloudData = await cloudLoad(key);
+      if (cloudData && cloudData.profiles && cloudData.profiles.length > 0) {
+        if (confirm(`云端有 ${cloudData.profiles.length} 条记录，是否加载云端数据？（选"取消"将用本地数据覆盖云端）`)) {
+          replaceState(cloudData);
+        }
+      }
+      renderProfileList(container, onEdit, onSetup);
+      showToast(container, '已连接云同步');
+    });
+  }
+
+  const syncPullBtn = container.querySelector('#btn-sync-pull');
+  if (syncPullBtn) {
+    syncPullBtn.addEventListener('click', async () => {
+      const key = getSyncKey();
+      if (!key) return;
+      const cloudData = await cloudLoad(key);
+      if (cloudData && cloudData.profiles) {
+        replaceState(cloudData);
+        renderProfileList(container, onEdit, onSetup);
+        showToast(container, `已从云端拉取 ${cloudData.profiles.length} 条记录`);
+      } else {
+        showToast(container, '云端暂无数据');
+      }
+    });
+  }
+
+  const syncDisconnectBtn = container.querySelector('#btn-sync-disconnect');
+  if (syncDisconnectBtn) {
+    syncDisconnectBtn.addEventListener('click', () => {
+      clearSyncKey();
+      renderProfileList(container, onEdit, onSetup);
+      showToast(container, '已断开云同步');
+    });
+  }
+
+  // Listen for sync status updates
+  const syncStatusHandler = (e: Event) => {
+    const detail = (e as CustomEvent).detail;
+    const statusEl = container.querySelector('#sync-status');
+    if (statusEl) {
+      statusEl.textContent = detail.ok ? '已同步 ✓' : '同步失败';
+      setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+    }
+  };
+  window.addEventListener('mdac-sync', syncStatusHandler);
 
   container.querySelector('#import-file')!.addEventListener('change', (e) => {
     const file = (e.target as HTMLInputElement).files?.[0];

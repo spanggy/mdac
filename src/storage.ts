@@ -1,7 +1,10 @@
 import { AppState, TravelerProfile } from './types';
+import { getSyncKey, cloudSave } from './sync';
 
 const STORAGE_KEY = 'mdac_profiles';
 const CURRENT_VERSION = 1;
+
+let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
 function loadState(): AppState {
   try {
@@ -15,6 +18,21 @@ function loadState(): AppState {
 }
 
 function saveState(state: AppState): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudSync(state);
+}
+
+function scheduleCloudSync(state: AppState): void {
+  const key = getSyncKey();
+  if (!key) return;
+  if (syncTimer) clearTimeout(syncTimer);
+  syncTimer = setTimeout(async () => {
+    const ok = await cloudSave(key, state);
+    window.dispatchEvent(new CustomEvent('mdac-sync', { detail: { ok } }));
+  }, 1000);
+}
+
+export function replaceState(state: AppState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
