@@ -1,4 +1,4 @@
-import { put, list, del } from '@vercel/blob';
+import { put, list, del, getDownloadUrl } from '@vercel/blob';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 function blobKey(syncKey: string): string {
@@ -26,7 +26,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (blobs.length === 0) {
         return res.json({ profiles: [], version: 1 });
       }
-      const response = await fetch(blobs[0].url);
+      const downloadUrl = await getDownloadUrl(blobs[0].url);
+      const response = await fetch(downloadUrl);
       const data = await response.json();
       return res.json(data);
     }
@@ -43,7 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       await put(blobKey(syncKey), body, {
-        access: 'public',
+        access: 'private',
         contentType: 'application/json',
         addRandomSuffix: false,
       });
